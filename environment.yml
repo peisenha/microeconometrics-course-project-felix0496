@@ -10,7 +10,6 @@ dependencies:
 - statsmodels
 - pip
 - patsy
-- linearmodels
 - pip:
-
-
+  - linearmodels
+  
