@@ -5,6 +5,7 @@ dependencies:
 - pandas
 - jupyterlab
 - matplotlib
+- mock
 - seaborn
 - scipy
 - statsmodels
