@@ -31,7 +31,7 @@ def plot_bar_detrended_educ(df):
 
     _, ax = plt.subplots(1,1)
 
-    ax.bar(x_values, y_values, width = 0.25, color= ['red', 'green', 'yellow', 'blue'])
+    ax.bar(x_values, y_values, width = 0.25, color= ['#000000', '#404040', '#7f7f7f', '#bfbfbf'])
 
     point_annotations = ['1', '2', '3', '4']
     for i in range(len(x_values)):
@@ -39,3 +39,25 @@ def plot_bar_detrended_educ(df):
 
     ax.set_xlabel('Year of Birth')
     ax.set_ylabel('Schooling Differential')
+
+def plot_log_wkly_earnings_by_qob(df):
+
+    mean_lwklywge = df.groupby(['YOB', 'QOB'])['LWKLYWGE'].mean()
+
+    df_index = mean_lwklywge.index.to_frame().reset_index(drop = True)
+    x_values = df_index.apply(lambda x: x[0] + x[1] * 0.25 - 0.25, axis = 1)
+
+    y_values = mean_lwklywge.values
+
+    _, ax = plt.subplots(1, 1)
+    ax.plot(x_values, y_values, color = 'k', marker = 's')
+
+    point_annotations = ['1', '2', '3', '4']
+
+    for i in range(len(x_values)):
+        ax.annotate(point_annotations[i % 4], (x_values[i], y_values[i]))
+
+    ax.set_xlabel('Year of Birth')
+    ax.set_ylabel('Log Weekly Earnings')
+
+    plt.plot(x_values, y_values)

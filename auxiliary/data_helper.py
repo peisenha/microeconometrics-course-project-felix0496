@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import patsy
 
 FILE_PATH_CENSUS80_EXTRACT = "data/QOB.txt"
 FILE_PATH_FULL_CENSUS7080 = "data/NEW7080.dta"
@@ -19,20 +20,62 @@ def get_df_census80_extract():
 
     return df
 
-def get_df_full_census7080():
+def get_df_census70():
 
     cols = ['v1', 'v2', 'v4', 'v5', 'v6', 'v9', 'v10', 'v11', 'v12', 'v13', 'v16', \
             'v17', 'v18', 'v19', 'v20', 'v21', 'v24', 'v25', 'v27']
 
     cols_names = ['AGE', 'AGEQ', 'EDUC', 'ENOCENT', 'ESOCENT', 'LWKLYWGE', \
                 'MARRIED', 'MIDATL', 'MT', 'NEWENG', 'CENSUS', 'STATE', 'QOB', \
-                'RACE', 'SMSA', 'SOATL', 'STATE', 'WNOCENT', 'WSOCENT', 'YOB']
+                'RACE', 'SMSA', 'SOATL', 'WNOCENT', 'WSOCENT', 'YOB']
+    
+    df = pd.read_stata(FILE_PATH_FULL_CENSUS7080, columns = cols)
+
+    df = df.rename(columns = dict(zip(cols, cols_names)))
+
+    return df.loc[df['CENSUS'] == 70]
+
+def get_df_census70_census_80():
+
+    cols = ['v1', 'v2', 'v4', 'v5', 'v6', 'v9', 'v10', 'v11', 'v12', 'v13', 'v16', \
+            'v17', 'v18', 'v19', 'v20', 'v21', 'v24', 'v25', 'v27']
+
+    cols_names = ['AGE', 'AGEQ', 'EDUC', 'ENOCENT', 'ESOCENT', 'LWKLYWGE', \
+                'MARRIED', 'MIDATL', 'MT', 'NEWENG', 'CENSUS', 'STATE', 'QOB', \
+                'RACE', 'SMSA', 'SOATL', 'WNOCENT', 'WSOCENT', 'YOB']
     
     df = pd.read_stata(FILE_PATH_FULL_CENSUS7080, columns = cols)
 
     df = df.rename(columns = dict(zip(cols, cols_names)))
 
     return df
+
+def prepare_census_data(df, const = True, qob = True, yob = True, age = True, state_of_birth = False, \
+                        qob_x_yob = False, qob_x_state = False):
+
+    if const:
+        df = add_constant(df)
+    if qob or qob_x_yob or qob_x_state:
+        df = add_quarter_of_birth_dummies(df)
+    if yob or qob_x_yob:
+        df = add_year_of_birth_dummies(df)
+    if age:
+        df = add_age_squared(df)
+    if state_of_birth or qob_x_state:
+        df = add_state_of_birth_dummies(df)
+    if qob_x_yob:
+        df = add_qob_yob_interactions(df)
+    if qob_x_state:
+        df = add_qob_state_interactions(df, qob_x_state)
+
+    return df
+
+def add_constant(df):
+    df['CONST'] = 1
+    return df
+
+def get_constant_name():
+    return ['CONST']
 
 def add_quarter_of_birth_dummies(df):
 
@@ -41,6 +84,9 @@ def add_quarter_of_birth_dummies(df):
     df['DUMMY_QOB_3'] = [1 if x == 3 else 0 for x in df['QOB']]
 
     return df
+
+def get_quarter_of_birth_dummy_names(start = 1, end = 3):
+    return [f'DUMMY_QOB_{j}' for j in range(start, end + 1)]
 
 def add_year_of_birth_dummies(df):
 
@@ -57,6 +103,24 @@ def add_year_of_birth_dummies(df):
 
     return df
 
+def get_year_of_birth_dummy_names(start = 0, end = 8):
+    return [f'DUMMY_YOB_{i}' for i in range(start, end + 1)]
+
+def add_age_squared(df):
+
+    df['AGESQ'] = df['AGEQ'].pow(2)
+    return df
+
+def get_age_control_names(ageq = True, agesq = True):
+    
+    lst = []
+    if ageq:
+        lst.append('AGEQ')
+    if agesq:
+        lst.append('AGESQ')
+    
+    return lst
+
 def add_state_of_birth_dummies(df):
 
     for i in set(df['STATE']):
@@ -65,6 +129,58 @@ def add_state_of_birth_dummies(df):
         df[column_name] = [1 if x == i else 0 for x in df['STATE']]
 
     return df
+
+def get_state_of_birth_dummy_names(state_list):
+    return [f'DUMMY_STATE_{i}' for i in state_list]
+
+def get_state_list(df, rm_state = 1 ):
+
+    state_list = set(df['STATE'])
+    state_list.remove(rm_state)
+    return state_list
+
+def add_qob_yob_interactions(df):
+
+    interact_qob_yob = patsy.dmatrix(' + '.join(get_qob_yob_interaction_names()), \
+                                        df, return_type = 'dataframe')
+    interact_qob_yob.drop('Intercept', axis=1, inplace=True)
+
+    return pd.concat((df, interact_qob_yob), axis = 1)
+
+def get_qob_yob_interaction_names(qob_start = 1, qob_end = 3, yob_start = 0, yob_end = 9):
+    return [f'DUMMY_YOB_{i}:DUMMY_QOB_{j}' for j in range(qob_start, qob_end + 1) for i in range(yob_start, yob_end + 1)]
+
+def add_qob_state_interactions(df, state_list):
+
+    interact_qob_state = patsy.dmatrix(' + '.join(get_qob_state_of_birth_interaction_names(state_list)), \
+                                          df, return_type = 'dataframe')
+    interact_qob_state.drop('Intercept', axis=1, inplace=True)
+
+    return pd.concat((df, interact_qob_state), axis = 1)
+
+def get_qob_state_of_birth_interaction_names(state_list, qob_start = 1, qob_end = 3):
+    return [f'DUMMY_STATE_{i}:DUMMY_QOB_{j}' for j in range(1,4) for i in state_list]
+
+def get_further_exogenous_regressors(race = True, smsa = True, married = True):
+
+    lst = []
+    if race:
+        lst.append('RACE')
+    if smsa:
+        lst.append('SMSA')
+    if married:
+        lst.append('MARRIED')
+
+    return lst
+
+def get_region_of_residence_dummies():
+    return ['NEWENG', 'MIDATL', 'ENOCENT', 'WNOCENT', 'SOATL', 'ESOCENT', 'WSOCENT', 'MT']
+
+def get_education_name():
+    return ['EDUC']
+
+def get_log_weekly_wage_name():
+    return ['LWKLYWGE']
 
 def add_education_dummies(df):
 
@@ -104,4 +220,4 @@ def two_sided_moving_average(x):
     for i in range(2, len(x) - 2):
         ma[i] = (x[i - 2] + x[i - 1] + x[i + 1] + x[i + 2]) / 4
 
-    return ma    
+    return ma

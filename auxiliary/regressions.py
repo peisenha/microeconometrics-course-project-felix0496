@@ -1,8 +1,18 @@
 from collections import OrderedDict
+import mock
+import numpy as np
 import pandas as pd
+import patsy
 import statsmodels.formula.api as smf
+from linearmodels.iv.model import IV2SLS, IVLIML
 
-from . import data_helper
+from .data_helper import get_constant_name, get_quarter_of_birth_dummy_names, \
+                        get_year_of_birth_dummy_names, get_state_of_birth_dummy_names, \
+                        get_qob_yob_interaction_names, get_qob_state_of_birth_interaction_names, \
+                        get_region_of_residence_dummies, get_further_exogenous_regressors, \
+                        get_age_control_names, get_education_name, get_log_weekly_wage_name
+
+from . import data_helper as dhlp
 
 def get_regression_results_educational_variables(educ_vars, cohorts):
 
@@ -17,14 +27,48 @@ def get_regression_results_educational_variables(educ_vars, cohorts):
     
     return results
 
+def get_results_table_wald_estimates(df):
+
+    wage_1st = df.loc[df['QOB'] == 1]['LWKLYWGE'].mean()
+    wage_other = df.loc[df['QOB'] != 1]['LWKLYWGE'].mean()
+    wage_diff = wage_1st - wage_other
+    wage_err = np.sqrt(np.power(df.loc[df['QOB'] == 1]['LWKLYWGE'].sem(), 2) + \
+                              np.power(df.loc[df['QOB'] != 1]['LWKLYWGE'].sem(), 2))
+
+    educ_1st = df.loc[df['QOB'] == 1]['EDUC'].mean()
+    educ_other = df.loc[df['QOB'] != 1]['EDUC'].mean()
+    educ_diff = educ_1st - educ_other
+    educ_err = np.sqrt(np.power(df.loc[df['QOB'] == 1]['EDUC'].sem(), 2) + \
+                         np.power(df.loc[df['QOB'] != 1]['EDUC'].sem(), 2))
+
+    # wald return to education
+    df['EDUC_pred'] = smf.ols(formula = 'EDUC ~ DUMMY_QOB_1', data = df).fit().predict()
+    wald_rslt = smf.ols(formula = 'LWKLYWGE ~ EDUC_pred', data = df).fit()
+
+    # ols return to education
+    ols_rslt = smf.ols(formula = 'LWKLYWGE ~ EDUC', data = df).fit()
+
+    return {'wage_1st' : wage_1st, \
+            'wage_other' : wage_other, \
+            'wage_diff' : wage_diff, \
+            'wage_err' : wage_err, \
+            'educ_1st' : educ_1st, \
+            'educ_other' : educ_other, \
+            'educ_diff' : educ_diff, \
+            'educ_err' : educ_err, \
+            'wald_est' : wald_rslt.params['EDUC_pred'], \
+            'wald_err' : wald_rslt.bse['EDUC_pred'], \
+            'ols_est' : ols_rslt.params['EDUC'], \
+            'ols_err' : ols_rslt.bse['EDUC']}
+
 def get_regression_results_ols_tls(df, state_of_birth_dummies = False, race = True):
 
     # add dummies for quarter and year of birth
-    df = data_helper.add_quarter_of_birth_dummies(df)
-    df = data_helper.add_year_of_birth_dummies(df)
+    df = dhlp.add_quarter_of_birth_dummies(df)
+    df = dhlp.add_year_of_birth_dummies(df)
     
     if state_of_birth_dummies:
-        df = data_helper.add_state_of_birth_dummies(df)
+        df = dhlp.add_state_of_birth_dummies(df)
         state_lst = set(df['STATE'])
         state_lst.remove(1)
 
@@ -195,3 +239,330 @@ def get_regression_results_ols_tls(df, state_of_birth_dummies = False, race = Tr
                         ('tsls_6', tsls_6),
                         ('ols_7', ols_7),
                         ('tsls_8', tsls_8)])
+
+# def get_results_mstly_hrmlss_ecnmtrcs_table_4_6_2(df):
+
+#     # prepare data frame
+#     # add dummies for quarter, year of birth, state of birth
+#     df = dhlp.add_quarter_of_birth_dummies(df)
+#     df = dhlp.add_year_of_birth_dummies(df)
+#     df = dhlp.add_state_of_birth_dummies(df)
+#     # add age squared control
+#     df = dhlp.add_age_squared(df)
+#     # add constant
+#     df = dhlp.add_constant(df)
+
+#     # create list of state variables
+#     state_list = set(df['STATE'])
+#     state_list.remove(1)
+
+#     # same for all regressions
+#     dependent = df['LWKLYWGE']
+#     endog = df['EDUC']
+
+#     # create interactions
+#     interact_qob_yob = patsy.dmatrix(' + '.join(get_qob_yob_interaction_names()), \
+#                                         df, return_type = 'dataframe')
+#     interact_qob_yob.drop('Intercept', axis=1, inplace=True)
+
+#     interact_qob_state = patsy.dmatrix(' + '.join(get_qob_state_of_birth_interaction_names(state_list)), \
+#                                           df, return_type = 'dataframe')
+#     interact_qob_state.drop('Intercept', axis=1, inplace=True)
+
+#     # instruments and exogenous regressors change by every regression
+#     exog = []
+#     instruments = []
+#     # regression (1)
+#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names()])
+#     instruments.append(df[get_quarter_of_birth_dummy_names()])
+#     # regression (2)
+#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names() + \
+#                    get_age_control_names()])
+#     instruments.append(df[get_quarter_of_birth_dummy_names()])
+#     # regression (3)
+#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names()])
+#     instruments.append(interact_qob_yob)
+#     # regression (4)
+#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names() + \
+#                    get_age_control_names()])
+#     instruments.append(interact_qob_yob)
+#     # regression (5)
+#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names() + \
+#                    get_state_of_birth_dummy_names(state_list)])
+#     instruments.append(pd.concat([interact_qob_state,interact_qob_yob], axis=1))
+#     # regression (6)
+#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names() + \
+#                    get_state_of_birth_dummy_names(state_list) + get_age_control_names()])
+#     instruments.append(pd.concat([interact_qob_state,interact_qob_yob], axis=1))
+
+
+#     results = []
+
+#     for exg, instr in zip(exog, instruments):
+        
+#         iv2sls_res = iv_two_stage_least_squares(dependent, exg, endog, instr)
+#         ivliml_res = iv_limited_information_ml(dependent, exg, endog, instr)
+
+#         results += [(iv2sls_res, ivliml_res)]
+
+#     return results
+
+def iv_two_stage_least_squares(dependent, exog, endog, instruments, mock_validation = False):
+
+    try:
+        rslt = IV2SLS(dependent, exog, endog, instruments).fit()
+    except ValueError as e:
+        print(str(e))
+
+        with mock.patch('linearmodels.iv.model._IVModelBase._validate_inputs'):
+            rslt = IV2SLS(dependent, exog, endog, instruments).fit()
+    
+    return rslt
+
+def iv_limited_information_ml(dependent, exog, endog, instruments, mock_validation = False):
+
+    try:
+        rslt = IVLIML(dependent, exog, endog, instruments).fit()
+    except ValueError as e:
+        print(str(e))
+
+        with mock.patch('linearmodels.iv.model._IVModelBase._validate_inputs'):
+            rslt = IVLIML(dependent, exog, endog, instruments).fit()
+    
+    return rslt
+
+def run_model_iv2sls(df, model):
+
+    dependent, exog, endog, instruments = model
+
+    results = []
+
+    for dpnd, exg, endg, instr in zip(dependent, exog, endog, instruments):
+        
+        if endg and instr:
+            try:
+                rslt = iv_two_stage_least_squares(df[dpnd], df[exg], df[endg], df[instr])
+            except MemoryError as e:
+                print(str(e))
+                break
+        else:
+            try:
+                rslt = iv_two_stage_least_squares(df[dpnd], df[exg], None, None)
+            except MemoryError as e:
+                print(str(e))
+                break
+
+        results += [rslt]
+    
+    return results
+
+def run_model_ivliml(df, model):
+
+    dependent, exog, endog, instruments = model
+
+    results = []
+
+    for dpnd, exg, endg, instr in zip(dependent, exog, endog, instruments):
+        
+        if endg and instr:
+            try:
+                rslt = iv_limited_information_ml(df[dpnd], df[exg], df[endg], df[instr])
+            except MemoryError as e:
+                print(str(e))
+                break
+        else:
+            rslt = None
+
+        results += [rslt]
+    
+    return results
+
+def f_test_excluded_instruments(df, model):
+
+    _, exog, endog, instruments = model
+
+    results = []
+
+    for exg, endg, instr in zip(exog, endog, instruments):
+
+        if endg:
+            try:
+                rslt = smf.ols(formula = endg[0] + ' ~ - 1 + ' + ' + '.join(exg + instr), data = df).fit()
+            except MemoryError as e:
+                print(str(e))
+                break
+
+            restriction = np.zeros(shape = (len(instr), len(exg) + len(instr)))
+            for i in range(len(instr)):
+                restriction[i, -i - 1] = 1
+
+            results += [rslt.f_test(restriction)]
+
+        else:
+            results += [None]
+
+    return results
+
+def partial_r_squared_excluded_instruments(df, model):
+
+    _, exog, endog, instruments = model
+
+    results = []
+
+    for exg, endg, instr in zip(exog, endog, instruments):
+
+        if endg:
+
+            try:
+                rslt = smf.ols(formula = endg[0] + ' ~ - 1 +' + ' + '.join(exg + instr), data = df).fit()
+            except MemoryError as e:
+                print(str(e))
+                break
+
+            try:
+                rslt_excl_instr = smf.ols(formula = endg[0] + ' ~ - 1 + ' + ' + '.join(exg), data = df).fit()
+            except MemoryError as e:
+                print(str(e))
+                break
+
+            partial_r_squared = (rslt_excl_instr.resid.pow(2).sum() - rslt.resid.pow(2).sum()) / rslt_excl_instr.resid.pow(2).sum()
+
+            results += [partial_r_squared]
+        
+        else:
+            results += [None]
+
+    return results
+
+#####
+# MODEL DEFINITIONS
+#####
+
+
+def get_model_weak_instruments_table_1():
+
+    dependent, exog, endog, instruments = [], [], [], []
+
+    # regression (1)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + get_age_control_names() + \
+                get_further_exogenous_regressors() + get_region_of_residence_dummies())
+    endog.append(None)
+    instruments.append(None)
+    # regression (2)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_age_control_names() + \
+                get_further_exogenous_regressors() + get_region_of_residence_dummies())
+    endog.append(get_education_name())
+    instruments.append(get_quarter_of_birth_dummy_names())
+    # regression (3)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + get_year_of_birth_dummy_names() + \
+                get_further_exogenous_regressors() + get_region_of_residence_dummies())
+    endog.append(None)
+    instruments.append(None)
+    # regression (4)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_further_exogenous_regressors() + get_region_of_residence_dummies())
+    endog.append(get_education_name())
+    instruments.append(get_quarter_of_birth_dummy_names() + \
+                       get_qob_yob_interaction_names())
+    # regression (5)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + get_year_of_birth_dummy_names() + \
+                get_age_control_names() + get_further_exogenous_regressors() + \
+                get_region_of_residence_dummies())
+    endog.append(None)
+    instruments.append(None)
+    # regression (6)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_age_control_names() + get_further_exogenous_regressors() + \
+                get_region_of_residence_dummies())
+    endog.append(get_education_name())
+    instruments.append(get_quarter_of_birth_dummy_names() + \
+                       get_qob_yob_interaction_names())
+    
+    return dependent, exog, endog, instruments
+
+def get_model_weak_instruments_table_2(state_list):
+
+    dependent, exog, endog, instruments = [], [], [], []
+
+    # regression (1)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + get_year_of_birth_dummy_names() + \
+                get_further_exogenous_regressors() + get_region_of_residence_dummies() + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(None)
+    instruments.append(None)
+    # regression (2)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_further_exogenous_regressors() + get_region_of_residence_dummies() + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(get_education_name())
+    instruments.append(get_quarter_of_birth_dummy_names() + get_qob_yob_interaction_names()+ \
+                       get_qob_state_of_birth_interaction_names(state_list))
+    # regression (3)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + get_age_control_names() + get_year_of_birth_dummy_names() + \
+                get_further_exogenous_regressors() + get_region_of_residence_dummies() + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(None)
+    instruments.append(None)
+    # regression (4)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_age_control_names() + get_year_of_birth_dummy_names() + \
+                get_further_exogenous_regressors() + get_region_of_residence_dummies() + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(get_education_name())
+    instruments.append(get_quarter_of_birth_dummy_names() + get_qob_yob_interaction_names()+ \
+                       get_qob_state_of_birth_interaction_names(state_list))
+    
+    return dependent, exog, endog, instruments
+
+
+def get_model_mstly_hrmlss_ecnmtrcs_table_4_6_2(state_list):
+
+    dependent, exog, endog, instruments = [], [], [], []
+
+    # regression (1)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names())
+    endog.append(get_education_name())
+    instruments.append(get_quarter_of_birth_dummy_names())
+    # regression (2)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_age_control_names())
+    endog.append(get_education_name())
+    instruments.append(get_quarter_of_birth_dummy_names())
+    # regression (3)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names())
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names())
+    # regression (4)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_age_control_names())
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names())
+    # regression (5)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names() + \
+                       get_qob_state_of_birth_interaction_names(state_list))
+    # regression (6)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_state_of_birth_dummy_names(state_list) + get_age_control_names())
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names() + \
+                       get_qob_state_of_birth_interaction_names(state_list))
+
+    return dependent, exog, endog, instruments
