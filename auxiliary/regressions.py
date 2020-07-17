@@ -240,73 +240,6 @@ def get_regression_results_ols_tls(df, state_of_birth_dummies = False, race = Tr
                         ('ols_7', ols_7),
                         ('tsls_8', tsls_8)])
 
-# def get_results_mstly_hrmlss_ecnmtrcs_table_4_6_2(df):
-
-#     # prepare data frame
-#     # add dummies for quarter, year of birth, state of birth
-#     df = dhlp.add_quarter_of_birth_dummies(df)
-#     df = dhlp.add_year_of_birth_dummies(df)
-#     df = dhlp.add_state_of_birth_dummies(df)
-#     # add age squared control
-#     df = dhlp.add_age_squared(df)
-#     # add constant
-#     df = dhlp.add_constant(df)
-
-#     # create list of state variables
-#     state_list = set(df['STATE'])
-#     state_list.remove(1)
-
-#     # same for all regressions
-#     dependent = df['LWKLYWGE']
-#     endog = df['EDUC']
-
-#     # create interactions
-#     interact_qob_yob = patsy.dmatrix(' + '.join(get_qob_yob_interaction_names()), \
-#                                         df, return_type = 'dataframe')
-#     interact_qob_yob.drop('Intercept', axis=1, inplace=True)
-
-#     interact_qob_state = patsy.dmatrix(' + '.join(get_qob_state_of_birth_interaction_names(state_list)), \
-#                                           df, return_type = 'dataframe')
-#     interact_qob_state.drop('Intercept', axis=1, inplace=True)
-
-#     # instruments and exogenous regressors change by every regression
-#     exog = []
-#     instruments = []
-#     # regression (1)
-#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names()])
-#     instruments.append(df[get_quarter_of_birth_dummy_names()])
-#     # regression (2)
-#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names() + \
-#                    get_age_control_names()])
-#     instruments.append(df[get_quarter_of_birth_dummy_names()])
-#     # regression (3)
-#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names()])
-#     instruments.append(interact_qob_yob)
-#     # regression (4)
-#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names() + \
-#                    get_age_control_names()])
-#     instruments.append(interact_qob_yob)
-#     # regression (5)
-#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names() + \
-#                    get_state_of_birth_dummy_names(state_list)])
-#     instruments.append(pd.concat([interact_qob_state,interact_qob_yob], axis=1))
-#     # regression (6)
-#     exog.append(df[get_constant_name() + get_year_of_birth_dummy_names() + \
-#                    get_state_of_birth_dummy_names(state_list) + get_age_control_names()])
-#     instruments.append(pd.concat([interact_qob_state,interact_qob_yob], axis=1))
-
-
-#     results = []
-
-#     for exg, instr in zip(exog, instruments):
-        
-#         iv2sls_res = iv_two_stage_least_squares(dependent, exg, endog, instr)
-#         ivliml_res = iv_limited_information_ml(dependent, exg, endog, instr)
-
-#         results += [(iv2sls_res, ivliml_res)]
-
-#     return results
-
 def iv_two_stage_least_squares(dependent, exog, endog, instruments, mock_validation = False):
 
     try:
@@ -437,7 +370,6 @@ def partial_r_squared_excluded_instruments(df, model):
 #####
 # MODEL DEFINITIONS
 #####
-
 
 def get_model_weak_instruments_table_1():
 

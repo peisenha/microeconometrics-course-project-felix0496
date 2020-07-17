@@ -5,7 +5,7 @@ import patsy
 FILE_PATH_CENSUS80_EXTRACT = "data/QOB.txt"
 FILE_PATH_FULL_CENSUS7080 = "data/NEW7080.dta"
 
-def get_df_census80_extract():
+def get_df_census80():
 
     cols = [0, 1, 3, 4, 5, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20, 23, 24, 26]
 
@@ -72,36 +72,20 @@ def prepare_census_data(df, const = True, qob = True, yob = True, age = True, st
 
 def add_constant(df):
     df['CONST'] = 1
+    df['CONST'] = df['CONST'].astype(np.uint8)
     return df
 
 def get_constant_name():
     return ['CONST']
 
 def add_quarter_of_birth_dummies(df):
-
-    df['DUMMY_QOB_1'] = [1 if x == 1 else 0 for x in df['QOB']]
-    df['DUMMY_QOB_2'] = [1 if x == 2 else 0 for x in df['QOB']]
-    df['DUMMY_QOB_3'] = [1 if x == 3 else 0 for x in df['QOB']]
-
-    return df
+    return pd.concat((df, pd.get_dummies(df['QOB'], prefix = 'DUMMY_QOB')), axis = 1)
 
 def get_quarter_of_birth_dummy_names(start = 1, end = 3):
     return [f'DUMMY_QOB_{j}' for j in range(start, end + 1)]
 
 def add_year_of_birth_dummies(df):
-
-    df['DUMMY_YOB_0'] = [1 if x % 10 == 0 else 0 for x in df['YOB']]
-    df['DUMMY_YOB_1'] = [1 if x % 10 == 1 else 0 for x in df['YOB']]
-    df['DUMMY_YOB_2'] = [1 if x % 10 == 2 else 0 for x in df['YOB']]
-    df['DUMMY_YOB_3'] = [1 if x % 10 == 3 else 0 for x in df['YOB']]
-    df['DUMMY_YOB_4'] = [1 if x % 10 == 4 else 0 for x in df['YOB']]
-    df['DUMMY_YOB_5'] = [1 if x % 10 == 5 else 0 for x in df['YOB']]
-    df['DUMMY_YOB_6'] = [1 if x % 10 == 6 else 0 for x in df['YOB']]
-    df['DUMMY_YOB_7'] = [1 if x % 10 == 7 else 0 for x in df['YOB']]
-    df['DUMMY_YOB_8'] = [1 if x % 10 == 8 else 0 for x in df['YOB']]
-    df['DUMMY_YOB_9'] = [1 if x % 10 == 9 else 0 for x in df['YOB']]
-
-    return df
+    return pd.concat((df, pd.get_dummies(df['YOB'] % 10, prefix = 'DUMMY_YOB')), axis = 1)
 
 def get_year_of_birth_dummy_names(start = 0, end = 8):
     return [f'DUMMY_YOB_{i}' for i in range(start, end + 1)]
@@ -122,13 +106,7 @@ def get_age_control_names(ageq = True, agesq = True):
     return lst
 
 def add_state_of_birth_dummies(df):
-
-    for i in set(df['STATE']):
-
-        column_name = f'DUMMY_STATE_{i}'
-        df[column_name] = [1 if x == i else 0 for x in df['STATE']]
-
-    return df
+    return pd.concat((df, pd.get_dummies(df['STATE'], prefix = 'DUMMY_STATE')), axis = 1)
 
 def get_state_of_birth_dummy_names(state_list):
     return [f'DUMMY_STATE_{i}' for i in state_list]
@@ -145,7 +123,7 @@ def add_qob_yob_interactions(df):
                                         df, return_type = 'dataframe')
     interact_qob_yob.drop('Intercept', axis=1, inplace=True)
 
-    return pd.concat((df, interact_qob_yob), axis = 1)
+    return pd.concat((df, interact_qob_yob.astype(np.uint8)), axis = 1)
 
 def get_qob_yob_interaction_names(qob_start = 1, qob_end = 3, yob_start = 0, yob_end = 9):
     return [f'DUMMY_YOB_{i}:DUMMY_QOB_{j}' for j in range(qob_start, qob_end + 1) for i in range(yob_start, yob_end + 1)]
@@ -156,7 +134,7 @@ def add_qob_state_interactions(df, state_list):
                                           df, return_type = 'dataframe')
     interact_qob_state.drop('Intercept', axis=1, inplace=True)
 
-    return pd.concat((df, interact_qob_state), axis = 1)
+    return pd.concat((df, interact_qob_state.astype(np.uint8)), axis = 1)
 
 def get_qob_state_of_birth_interaction_names(state_list, qob_start = 1, qob_end = 3):
     return [f'DUMMY_STATE_{i}:DUMMY_QOB_{j}' for j in range(1,4) for i in state_list]

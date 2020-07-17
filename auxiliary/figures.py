@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 
 def plot_educ_against_yob(df):
 
@@ -10,17 +11,20 @@ def plot_educ_against_yob(df):
     y_values = mean_educ.values
 
     _, ax = plt.subplots(1, 1, figsize = (10, 5))
-    ax.plot(x_values, y_values, color = 'k', marker = 's')
+    ax.plot(x_values, y_values, color = '0.5')
 
-    point_annotations = ['1', '2', '3', '4']
+    colors = ['b', 'g', 'r', 'c']
 
-    for i in range(len(x_values)):
-        ax.annotate(point_annotations[i % 4], (x_values[i] - 0.075, y_values[i] - 0.075))
+    for i in range(4):
+
+        points = np.array(list(zip(x_values, y_values)))[i::4]
+
+        ax.scatter(points[:, 0], points[:, 1], marker = 's', s = 34, color = colors[i], label = i + 1)
 
     ax.set_xlabel('Year of Birth')
     ax.set_ylabel('Years Of Completed Education')
 
-    plt.plot(x_values, y_values)
+    ax.legend(title = "Quarter")
 
 def plot_bar_detrended_educ(df):
 
@@ -31,14 +35,18 @@ def plot_bar_detrended_educ(df):
 
     _, ax = plt.subplots(1,1)
 
-    ax.bar(x_values, y_values, width = 0.25, color= ['#000000', '#404040', '#7f7f7f', '#bfbfbf'])
+    colors= ['b', 'g', 'r', 'c']
 
-    point_annotations = ['1', '2', '3', '4']
-    for i in range(len(x_values)):
-        ax.annotate(point_annotations[i % 4], (x_values[i] - 0.075, y_values[i]))
+    for i in range(4):
+        
+        points = np.array(list(zip(x_values, y_values)))[i::4]
+
+        ax.bar(points[:, 0], points[:, 1], width = 0.25, color= colors[i], label = i + 1)
 
     ax.set_xlabel('Year of Birth')
     ax.set_ylabel('Schooling Differential')
+
+    ax.legend(title = "Quarter")
 
 def plot_log_wkly_earnings_by_qob(df):
 
@@ -50,14 +58,16 @@ def plot_log_wkly_earnings_by_qob(df):
     y_values = mean_lwklywge.values
 
     _, ax = plt.subplots(1, 1)
-    ax.plot(x_values, y_values, color = 'k', marker = 's')
+    ax.plot(x_values, y_values, color = '0.5')  
 
-    point_annotations = ['1', '2', '3', '4']
+    colors = ['b', 'g', 'r', 'c']
 
-    for i in range(len(x_values)):
-        ax.annotate(point_annotations[i % 4], (x_values[i], y_values[i]))
+    for i in range(4):
+
+        points = np.array(list(zip(x_values, y_values)))[i::4]
+        ax.scatter(points[:, 0], points[:, 1], marker = 's', s = 34, color = colors[i], label = i + 1)
 
     ax.set_xlabel('Year of Birth')
     ax.set_ylabel('Log Weekly Earnings')
 
-    plt.plot(x_values, y_values)
+    ax.legend(title = "Quarter")
