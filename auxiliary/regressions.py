@@ -5,6 +5,7 @@ import pandas as pd
 import patsy
 import statsmodels.formula.api as smf
 from linearmodels.iv.model import IV2SLS, IVLIML
+from statsmodels.regression.linear_model import OLS
 
 from .data_helper import get_constant_name, get_quarter_of_birth_dummy_names, \
                         get_year_of_birth_dummy_names, get_state_of_birth_dummy_names, \
@@ -61,7 +62,7 @@ def get_results_table_wald_estimates(df):
             'ols_est' : ols_rslt.params['EDUC'], \
             'ols_err' : ols_rslt.bse['EDUC']}
 
-def get_regression_results_ols_tls(df, state_of_birth_dummies = False, race = True):
+def get_regression_results_ols_tsls(df, state_of_birth_dummies = False, race = True):
 
     # add dummies for quarter and year of birth
     df = dhlp.add_quarter_of_birth_dummies(df)
@@ -240,33 +241,88 @@ def get_regression_results_ols_tls(df, state_of_birth_dummies = False, race = Tr
                         ('ols_7', ols_7),
                         ('tsls_8', tsls_8)])
 
-def iv_two_stage_least_squares(dependent, exog, endog, instruments, mock_validation = False):
+class SmallRegressionResult():
+    
+    def __init__(self, regressionResult):
+        
+        self.params = regressionResult.params
+        self.bse = regressionResult.bse if hasattr(regressionResult, 'bse') else None
+        self.std_errors = regressionResult.std_errors if hasattr(regressionResult, 'std_errors') else None
 
+# wrapper for the IV2SLS method
+def IV2SLS_wrapper(dependent, exog, endog, instruments, small_rslt = False):
+    """
+    If small_rslt is True, the method return a smaller version of the regression result
+    using the SmallRegressionResult class.
+    """
+    # try to run the IV2SLS method without mocking the validation
     try:
-        rslt = IV2SLS(dependent, exog, endog, instruments).fit()
-    except ValueError as e:
-        print(str(e))
-
-        with mock.patch('linearmodels.iv.model._IVModelBase._validate_inputs'):
+        if small_rslt:
+            rslt = SmallRegressionResult(IV2SLS(dependent, exog, endog, instruments).fit())
+        else:
             rslt = IV2SLS(dependent, exog, endog, instruments).fit()
-    
+    except ValueError as e:
+        print(str(e))
+
+        # run the IV2LS method while mocking the validation
+        with mock.patch('linearmodels.iv.model._IVModelBase._validate_inputs'):
+            if small_rslt:
+                rslt = SmallRegressionResult(IV2SLS(dependent, exog, endog, instruments).fit())
+            else:
+                rslt = IV2SLS(dependent, exog, endog, instruments).fit()
+
     return rslt
 
-def iv_limited_information_ml(dependent, exog, endog, instruments, mock_validation = False):
+def IV2SLS_using_ols(dependent, exog, endog, instruments, small_rslt = False):
+    """
+    If small_rslt is True, the method return a smaller version of the regression result
+    using the SmallRegressionResult class.
+    
+    
+    The IV2SLS method of the linearmodels module run a simple OLS regression,
+    if only inputs for dependent and exog are provided.
+    To provide a uniform interface this procedure is also implemented for this method.
+    """
+    # run tsls regression if all required variables are passed, otherwise run ols
+    if endog and instruments:
+         # predict the endog, using the results from first stage
+        endog_pred = pd.Series(data = OLS(endog = endog, exog = pd.concat((exog, instruments), axis = 1)).fit().predict(), \
+                               name = f'{endog.name}_predict')
+        # run the second stage, effect of the predicted endog on dependent controlling for exog
+        if small_rslt:
+            rslt = SmallRegressionResult(OLS(endog = dependent, exog = pd.concat((exog, endog_pred), axis = 1)).fit())
+        else:
+            rslt = OLS(endog = dependent, exog = pd.concat((exog, endog_pred), axis = 1)).fit()
+
+    else:
+        if small_rslt:
+            rslt = SmallRegressionResult(OLS(endog = dependent, exog = exog).fit())
+        else:
+            rslt = OLS(endog = dependent, exog = exog).fit()
+            
+    return rslt
+
+def IVLIML_wrapper(dependent, exog, endog, instruments, small_rslt = False):
 
     try:
-        rslt = IVLIML(dependent, exog, endog, instruments).fit()
+        if small_rslt:
+            rslt = SmallRegressionResult(IVLIML(dependent, exog, endog, instruments).fit())
+        else:
+            rslt = IVLIML(dependent, exog, endog, instruments).fit()
     except ValueError as e:
         print(str(e))
 
         with mock.patch('linearmodels.iv.model._IVModelBase._validate_inputs'):
-            rslt = IVLIML(dependent, exog, endog, instruments).fit()
+            if small_rslt:
+                rslt = SmallRegressionResult(IVLIML(dependent, exog, endog, instruments).fit())
+            else:
+                rslt = IVLIML(dependent, exog, endog, instruments)
     
     return rslt
 
-def run_model_iv2sls(df, model):
+def run_specification_iv2sls(df, specification, small_rslt = True):
 
-    dependent, exog, endog, instruments = model
+    dependent, exog, endog, instruments = specification
 
     results = []
 
@@ -274,13 +330,13 @@ def run_model_iv2sls(df, model):
         
         if endg and instr:
             try:
-                rslt = iv_two_stage_least_squares(df[dpnd], df[exg], df[endg], df[instr])
+                rslt = IV2SLS_wrapper(df[dpnd], df[exg], df[endg], df[instr], small_rslt)
             except MemoryError as e:
                 print(str(e))
                 break
         else:
             try:
-                rslt = iv_two_stage_least_squares(df[dpnd], df[exg], None, None)
+                rslt = IV2SLS_wrapper(df[dpnd], df[exg], None, None, small_rslt)
             except MemoryError as e:
                 print(str(e))
                 break
@@ -289,9 +345,9 @@ def run_model_iv2sls(df, model):
     
     return results
 
-def run_model_ivliml(df, model):
+def run_specification_ivliml(df, specification, small_rslt = True):
 
-    dependent, exog, endog, instruments = model
+    dependent, exog, endog, instruments = specification
 
     results = []
 
@@ -299,7 +355,7 @@ def run_model_ivliml(df, model):
         
         if endg and instr:
             try:
-                rslt = iv_limited_information_ml(df[dpnd], df[exg], df[endg], df[instr])
+                rslt = IVLIML_wrapper(df[dpnd], df[exg], df[endg], df[instr], small_rslt)
             except MemoryError as e:
                 print(str(e))
                 break
@@ -310,9 +366,9 @@ def run_model_ivliml(df, model):
     
     return results
 
-def f_test_excluded_instruments(df, model):
+def f_test_excluded_instruments(df, specification):
 
-    _, exog, endog, instruments = model
+    _, exog, endog, instruments = specification
 
     results = []
 
@@ -336,9 +392,9 @@ def f_test_excluded_instruments(df, model):
 
     return results
 
-def partial_r_squared_excluded_instruments(df, model):
+def partial_r_squared_excluded_instruments(df, specification):
 
-    _, exog, endog, instruments = model
+    _, exog, endog, instruments = specification
 
     results = []
 
@@ -367,11 +423,136 @@ def partial_r_squared_excluded_instruments(df, model):
 
     return results
 
+
+
 #####
-# MODEL DEFINITIONS
+# SPECIFICATIONS
 #####
 
-def get_model_weak_instruments_table_1():
+def get_specification_table_4_5_6():
+    
+    dependent, exog, endog, instruments = [], [], [], []
+    
+    # regression (1)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + \
+                get_year_of_birth_dummy_names())
+    endog.append(None)
+    instruments.append(None)
+    # regression (2)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names())
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names())
+    # regression (3)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + \
+                get_year_of_birth_dummy_names() + get_age_control_names())
+    endog.append(None)
+    instruments.append(None)
+    # regression (4)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_age_control_names())
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names())
+    # regression (5)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + \
+                get_year_of_birth_dummy_names() + get_region_of_residence_dummies() + \
+                get_further_exogenous_regressors())
+    endog.append(None)
+    instruments.append(None)
+    # regression (6)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + \
+                get_year_of_birth_dummy_names() + get_region_of_residence_dummies() + \
+                get_further_exogenous_regressors())
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names())
+    # regression (7)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + \
+                get_year_of_birth_dummy_names() + get_region_of_residence_dummies() + \
+                get_further_exogenous_regressors() + get_age_control_names())
+    endog.append(None)
+    instruments.append(None)
+    # regression (8)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + \
+                get_year_of_birth_dummy_names() + get_region_of_residence_dummies() + \
+                get_further_exogenous_regressors() + get_age_control_names())
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names())
+
+    return dependent, exog, endog, instruments
+
+def get_specification_table_7_8(state_list, race = True):
+    
+    
+    dependent, exog, endog, instruments = [], [], [], []
+    
+    # regression (1)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + \
+                get_year_of_birth_dummy_names() + get_state_of_birth_dummy_names(state_list))
+    endog.append(None)
+    instruments.append(None)
+    # regression (2)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names() + get_qob_state_of_birth_interaction_names(state_list))
+    # regression (3)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + \
+                get_year_of_birth_dummy_names() + get_age_control_names() + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(None)
+    instruments.append(None)
+    # regression (4)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_year_of_birth_dummy_names() + \
+                get_age_control_names() + get_state_of_birth_dummy_names(state_list))
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names() + get_qob_state_of_birth_interaction_names(state_list))
+    # regression (5)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + \
+                get_year_of_birth_dummy_names() + get_region_of_residence_dummies() + \
+                get_further_exogenous_regressors(race = race) + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(None)
+    instruments.append(None)
+    # regression (6)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + \
+                get_year_of_birth_dummy_names() + get_region_of_residence_dummies() + \
+                get_further_exogenous_regressors(race = race) + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names() + get_qob_state_of_birth_interaction_names(state_list))
+    # regression (7)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + get_education_name() + \
+                get_year_of_birth_dummy_names() + get_region_of_residence_dummies() + \
+                get_further_exogenous_regressors(race = race) + get_age_control_names() + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(None)
+    instruments.append(None)
+    # regression (8)
+    dependent.append(get_log_weekly_wage_name())
+    exog.append(get_constant_name() + \
+                get_year_of_birth_dummy_names() + get_region_of_residence_dummies() + \
+                get_further_exogenous_regressors(race = race) + get_age_control_names() + \
+                get_state_of_birth_dummy_names(state_list))
+    endog.append(get_education_name())
+    instruments.append(get_qob_yob_interaction_names() + get_qob_state_of_birth_interaction_names(state_list))
+
+    return dependent, exog, endog, instruments
+
+def get_specification_weak_instruments_table_1():
 
     dependent, exog, endog, instruments = [], [], [], []
 
@@ -418,7 +599,7 @@ def get_model_weak_instruments_table_1():
     
     return dependent, exog, endog, instruments
 
-def get_model_weak_instruments_table_2(state_list):
+def get_specification_weak_instruments_table_2(state_list):
 
     dependent, exog, endog, instruments = [], [], [], []
 
@@ -456,7 +637,7 @@ def get_model_weak_instruments_table_2(state_list):
     return dependent, exog, endog, instruments
 
 
-def get_model_mstly_hrmlss_ecnmtrcs_table_4_6_2(state_list):
+def get_specification_mstly_hrmlss_ecnmtrcs_table_4_6_2(state_list):
 
     dependent, exog, endog, instruments = [], [], [], []
 
