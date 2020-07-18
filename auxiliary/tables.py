@@ -26,7 +26,6 @@ def create_table_qob(results, outcome_variables = None):
                 <th>[P-value]</th>
             </tr>
         </thead>
-        <hline>
         <tbody>
     """
 
@@ -84,7 +83,6 @@ def create_table_wald_estimates(title, results):
                 <th>(3)<br>Difference<br>(std.error)<br>(1) - (2)</th>
             </tr>
         </thead>
-        <hline>
         <tbody>
             <tr>
                 <td>ln (wkly. wage)</td>
