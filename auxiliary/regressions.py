@@ -284,10 +284,10 @@ def IV2SLS_using_ols(dependent, exog, endog, instruments, small_rslt = False):
     To provide a uniform interface this procedure is also implemented for this method.
     """
     # run tsls regression if all required variables are passed, otherwise run ols
-    if endog and instruments:
+    if endog is not None and instruments is not None:
          # predict the endog, using the results from first stage
         endog_pred = pd.Series(data = OLS(endog = endog, exog = pd.concat((exog, instruments), axis = 1)).fit().predict(), \
-                               name = f'{endog.name}_predict')
+                               name = f'{endog.columns[0]}')
         # run the second stage, effect of the predicted endog on dependent controlling for exog
         if small_rslt:
             rslt = SmallRegressionResult(OLS(endog = dependent, exog = pd.concat((exog, endog_pred), axis = 1)).fit())
@@ -330,13 +330,13 @@ def run_specification_iv2sls(df, specification, small_rslt = True):
         
         if endg and instr:
             try:
-                rslt = IV2SLS_wrapper(df[dpnd], df[exg], df[endg], df[instr], small_rslt)
+                rslt = IV2SLS_using_ols(df[dpnd], df[exg], df[endg], df[instr], small_rslt)
             except MemoryError as e:
                 print(str(e))
                 break
         else:
             try:
-                rslt = IV2SLS_wrapper(df[dpnd], df[exg], None, None, small_rslt)
+                rslt = IV2SLS_using_ols(df[dpnd], df[exg], None, None, small_rslt)
             except MemoryError as e:
                 print(str(e))
                 break
